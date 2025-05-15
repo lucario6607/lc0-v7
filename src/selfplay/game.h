@@ -32,13 +32,14 @@
 #include <string>
 #include <vector>
 
-#include "search/classic/search.h"    // Provides Node, NodeTree, Search definitions
-#include "trainingdata/trainingdata.h" // For V7TrainingDataArray
-#include "chess/position.h"     // Changed from "utils/history.h" or "chess/history.h"
+#include "chess/pgn.h"
+#include "chess/position.h"
+#include "chess/uciloop.h"
+#include "neural/backend.h"
+#include "search/classic/search.h"
+#include "search/classic/stoppers/stoppers.h"
+#include "trainingdata/trainingdata.h"
 #include "utils/optionsparser.h"
-#include "utils/pgnbuilder.h"
-#include "utils/ratelimiter.h"
-#include "utils/searchoptions.h"
 
 namespace lczero {
 namespace classic {
