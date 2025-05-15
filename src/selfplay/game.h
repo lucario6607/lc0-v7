@@ -32,8 +32,9 @@
 #include <string>
 #include <vector>
 
-#include "search/mcts.h"
-#include "trainingdata/trainingdata.h"
+// #include "../search/mcts.h" // Old, incorrect include
+#include "search/classic/search.h"    // Provides Node, NodeTree, Search definitions
+#include "trainingdata/trainingdata.h" // For V7TrainingDataArray
 #include "utils/history.h"
 #include "utils/options.h"
 #include "utils/pgnbuilder.h"
@@ -41,6 +42,9 @@
 #include "utils/searchoptions.h"
 
 namespace lczero {
+// classic::Node is now defined via search/classic/search.h -> nodetree.h -> node.h
+// No need for forward declaration here if search.h is included.
+// However, keeping it doesn't harm and can help if only node.h was included directly.
 namespace classic {
 class Node;
 }  // namespace classic
