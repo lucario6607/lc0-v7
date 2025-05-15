@@ -1,5 +1,90 @@
 /*
   This file is part of Leela Chess Zero.
+  Copyright (C) 2018-2021 The LCZero Authors
+
+  Leela Chess is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or
+  (at your option) any later version.
+
+  Leela Chess is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
+
+  You should have received a copy of the GNU General Public License
+  along with Leela Chess.  If not, see <http://www.gnu.org/licenses/>.
+
+  Additional permission under GNU GPL version 3 section 7
+
+  If you modify this Program, or any covered work, by linking or
+  combining it with NVIDIA Corporation's libraries from the NVIDIA CUDA
+  Toolkit and the NVIDIA CUDA Deep Neural Network library (or a
+  modified version of those libraries), containing parts covered by the
+  terms of the respective license agreement, the licensors of this
+  Program grant you additional permission to convey the resulting work.
+*/
+
+#include "trainingdata/writer.h"
+
+#include "trainingdata/trainingdata.h"
+#include "utils/exception.h"
+#include "utils/filesystem.h"
+#include "utils/random.h"
+
+namespace lczero {
+namespace {
+std::string GetLc0CacheDirectory() {
+  std::string user_cache_path = GetUserCacheDirectory();
+  if (!user_cache_path.empty()) {
+    user_cache_path += "lc0/";
+    CreateDirectory(user_cache_path);
+  }
+  return user_cache_path;
+}
+
+}  // namespace
+
+TrainingDataWriter::TrainingDataWriter(int game_id) {
+  static std::string directory =
+      GetLc0CacheDirectory() + "data-" + Random::Get().GetString(12);
+  // It's fine if it already exists.
+  CreateDirectory(directory.c_str());
+
+  std::ostringstream oss;
+  oss << directory << '/' << "game_" << std::setfill('0') << std::setw(6)
+      << game_id << ".gz";
+
+  filename_ = oss.str();
+  fout_ = gzopen(filename_.c_str(), "wb");
+  if (!fout_) throw Exception("Cannot create gzip file " + filename_);
+}
+
+TrainingDataWriter::TrainingDataWriter(std::string filename)
+    : filename_(filename) {
+  fout_ = gzopen(filename_.c_str(), "wb");
+  if (!fout_) throw Exception("Cannot create gzip file " + filename_);
+}
+
+void TrainingDataWriter::WriteChunk(const V7TrainingData& data) {
+  auto bytes_written =
+      gzwrite(fout_, reinterpret_cast<const char*>(&data), sizeof(data));
+  if (bytes_written != sizeof(data)) {
+    throw Exception("Unable to write into " + filename_);
+  }
+}
+
+void TrainingDataWriter::Finalize() {
+  gzclose(fout_);
+  fout_ = nullptr;
+}
+
+}  // namespace lczero
+```
+--- START OF FILE trainingdata.cc ---
+```cpp
+/*
+  This file is part of Leela Chess Zero.
   Copyright (C) 2021 The LCZero Authors
 
   Leela Chess is free software: you can redistribute it and/or modify
@@ -26,6 +111,9 @@
 */
 
 #include "trainingdata/trainingdata.h"
+#include <algorithm> // For std::fill, std::find
+#include <cmath>     // For std::log, std::pow, std::max
+#include <limits>    // For std::numeric_limits
 
 namespace lczero {
 
@@ -77,7 +165,7 @@ std::tuple<float, float> DriftCorrect(float q, float d) {
 }
 }  // namespace
 
-void V6TrainingDataArray::Write(TrainingDataWriter* writer, GameResult result,
+void V7TrainingDataArray::Write(TrainingDataWriter* writer, GameResult result,
                                 bool adjudicated) const {
   if (training_data_.empty()) return;
   // Base estimate off of best_m.  If needed external processing can use a
@@ -111,7 +199,7 @@ void V6TrainingDataArray::Write(TrainingDataWriter* writer, GameResult result,
   }
 }
 
-void V6TrainingDataArray::Add(const classic::Node* node,
+void V7TrainingDataArray::Add(const classic::Node* node,
                               const PositionHistory& history,
                               classic::Eval best_eval,
                               classic::Eval played_eval, bool best_is_proven,
@@ -119,11 +207,11 @@ void V6TrainingDataArray::Add(const classic::Node* node,
                               std::span<Move> legal_moves,
                               const std::optional<EvalResult>& nneval,
                               float policy_softmax_temp) {
-  V6TrainingData result;
+  V7TrainingData result;
   const auto& position = history.Last();
 
   // Set version.
-  result.version = 6;
+  result.version = 7; // V7
   result.input_format = input_format_;
 
   // Populate planes.
@@ -146,14 +234,14 @@ void V6TrainingDataArray::Add(const classic::Node* node,
   }
   // Set illegal moves to have -1 probability.
   std::fill(std::begin(result.probabilities), std::end(result.probabilities),
-            -1);
+            -1.0f); // Ensure float literal
   // Set moves probabilities according to their relative amount of visits.
   // Compute Kullback-Leibler divergence in nats (between policy and visits).
   float kld_sum = 0;
   float total = 0.0;
   for (const auto& child : node->Edges()) {
     const Move move = child.GetMove();
-    float fracv = total_n > 0 ? child.GetN() / static_cast<float>(total_n) : 1;
+    float fracv = total_n > 0 ? child.GetN() / static_cast<float>(total_n) : 1.0f; // Ensure float literal
     if (nneval) {
       size_t move_idx =
           std::find(legal_moves.begin(), legal_moves.end(), move) -
@@ -262,7 +350,14 @@ void V6TrainingDataArray::Add(const classic::Node* node,
   }
   result.best_idx = MoveToNNIndex(best_move, transform);
   result.played_idx = MoveToNNIndex(played_move, transform);
-  result.reserved = 0;
+  
+  // V7 specific fields initialization
+  result.st_q = result.root_q; // Initialize st_q with root_q (for EMA start)
+  result.st_d = result.root_d; // Initialize st_d with root_d (for EMA start)
+  result.opp_played_idx = 0xFFFF; // Sentinel for unknown/unavailable
+  result.next_played_idx = 0xFFFF; // Sentinel for unknown/unavailable
+  std::fill(std::begin(result.extra), std::end(result.extra), 0.0f);
+
 
   // Unknown here - will be filled in once the full data has been collected.
   result.plies_left = 0;
