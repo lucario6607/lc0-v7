@@ -32,92 +32,62 @@
 #include <string>
 #include <vector>
 
-#include "chess/pgn.h"
-#include "chess/position.h"
-#include "chess/uciloop.h"
-#include "neural/backend.h"
-#include "search/classic/search.h"
-#include "search/classic/stoppers/stoppers.h"
-#include "trainingdata/trainingdata.h"
-#include "utils/optionsparser.h"
+#include "search/classic/search.h"      // Provides Node, NodeTree, Search definitions
+#include "trainingdata/trainingdata.h"   // For V7TrainingDataArray
+#include "utils/history.h"               // For PositionHistory (ensure this is src/utils/history.h)
+#include "chess/pgnbuilder.h"            // For PGNBuilder
+#include "utils/selfplayoptions.h"       // For SelfplayOptions
+#include "utils/trainingdataoptions.h"   // For TrainingDataOptions
+#include "neural/encoder.h"              // For FillEmptyHistory
+#include "neural/backend.h"              // For neural::Network, neural::EvalResult (used in Game methods)
+#include "chess/position.h"              // For Move, GameResult, DrawReason, GameResultReason (used in Game methods)
+
 
 namespace lczero {
 namespace classic {
-class Node;
+class Node; // Forward declaration
+struct Eval;  // Forward declaration
 }  // namespace classic
+
 
 // Contains the state of a game (both training and match game).
 class Game {
  public:
-  // Game constructor takes an PGNBuilder object that is used to store a PGN of
-  // the game as it's being played. It is expected that the `pgn_builder` object
-  // outlives the game object.
-  //
-  // It also takes an optional `backend`, which, if supplied, will be used to
-  // get NNCache data, which will be recorded in the training data.
-  //
-  // Also takes `training_data_options`, which are used to customize behavior
-  // for writing training data.
   Game(int id, PGNBuilder* pgn_builder, neural::Network* backend,
        const TrainingDataOptions& training_data_options,
        const FillEmptyHistory& white_fill_empty_history,
        const FillEmptyHistory& black_fill_empty_history);
   ~Game();
 
-  // Gets the underlying position history.
   const PositionHistory& GetHistory() const { return history_; }
   PositionHistory& GetHistory() { return history_; }
 
-  // Resets the game to the given FEN string.
   void Reset(const std::string& fen);
 
-  // Adds the best move to the game history.
   bool AddMove(Move move, classic::Eval best_eval, classic::Eval played_eval,
                bool best_is_proven, const classic::Node* node,
                float policy_softmax_temp, std::span<Move> legal_moves,
-               const std::optional<EvalResult>& nneval, std::string comment);
+               const std::optional<neural::EvalResult>& nneval, std::string comment);
 
-  // Gets the game result, considering the last position.
   GameResult GetResult(bool adjudicated) const;
-
-  // Writes training data. Returns path to training file.
   std::string WriteTrainingData(GameResult result, bool adjudicated);
-
-  // Gets PGN for the game.
   std::string GetPGN() const;
 
-  // Checks whether the game should be stopped. Returns the reason.
   GameResultReason CheckStop(const SelfplayOptions& options, int max_plies);
-
-  // Checks whether the game should be drawn.
   DrawReason CheckDraw(const SelfplayOptions& options);
-
-  // Checks whether the game should be resigned. Returns true if it should.
   bool CheckResign(const SelfplayOptions& options,
                    const classic::Node* root_node, bool is_our_turn);
 
-  // Checks whether the game is over.
   bool IsGameOver() const { return is_game_over_; }
   void SetGameOver() { is_game_over_ = true; }
-
-  // Gets the ID of this game.
   int GetId() const { return id_; }
-
-  // Get number of plies played in this game.
   size_t GetPgnPly() const { return history_.GetPgnPly(); }
-
-  // Total moves in game including variations.
   size_t GetTotalPly() const { return history_.GetLength(); }
-
-  // Was this game an opening book game.
   bool FromBook() const { return from_book_; }
   void SetFromBook() { from_book_ = true; }
 
  private:
-  // Resets game to the given position history.
   void Reset(const PositionHistory& history);
-
-  // Common reset logic between Reset(fen) and Reset(history).
   void DoReset();
 
   const int id_;
