@@ -29,72 +29,72 @@
 
 #include "neural/backend.h"
 #include "search/classic/node.h"
-#include "trainingdata/writer.h"
+// Do not include "trainingdata/writer.h" here to avoid circular dependency.
+// Forward declare TrainingDataWriter instead.
 
 namespace lczero {
 
+class TrainingDataWriter; // Forward declaration
+
 #pragma pack(push, 1)
 
-struct V6TrainingData {
-  uint32_t version;
-  uint32_t input_format;
-  float probabilities[1858];
-  uint64_t planes[104];
-  uint8_t castling_us_ooo;
-  uint8_t castling_us_oo;
-  uint8_t castling_them_ooo;
-  uint8_t castling_them_oo;
-  // For input type 3 contains enpassant column as a mask.
-  uint8_t side_to_move_or_enpassant;
-  uint8_t rule50_count;
-  // Bitfield with the following allocation:
-  //  bit 7: side to move (input type 3)
-  //  bit 6: position marked for deletion by the rescorer (never set by lc0)
-  //  bit 5: game adjudicated (v6)
-  //  bit 4: max game length exceeded (v6)
-  //  bit 3: best_q is for proven best move (v6)
-  //  bit 2: transpose transform (input type 3)
-  //  bit 1: mirror transform (input type 3)
-  //  bit 0: flip transform (input type 3)
-  // In versions prior to v5 this spot contained an unused move count field.
-  uint8_t invariance_info;
-  // In versions prior to v6 this spot contained thr result as an int8_t.
-  uint8_t dummy;
-  float root_q;
-  float best_q;
-  float root_d;
-  float best_d;
-  float root_m;      // In plies.
-  float best_m;      // In plies.
-  float plies_left;  // This is the training target for MLH.
-  float result_q;
-  float result_d;
-  float played_q;
-  float played_d;
-  float played_m;
-  // The folowing may be NaN if not found in cache.
-  float orig_q;  // For value repair.
-  float orig_d;
-  float orig_m;
-  uint32_t visits;
-  // Indices in the probabilities array.std::optional<EvalResult>
-  uint16_t played_idx;
-  uint16_t best_idx;
-  // Kullback-Leibler divergence between visits and policy (denominator)
-  float policy_kld;
-  uint32_t reserved;
+// V7 Training Data Structure
+// Based on V6, with additional fields as per chunkparser.py analysis.
+// Total size: 8396 bytes.
+struct V7TrainingData {
+  uint32_t version;                 // Bytes 0-3
+  uint32_t input_format;            // Bytes 4-7
+  float probabilities[1858];        // Bytes 8-7439 (7432 bytes)
+  uint64_t planes[104];             // Bytes 7440-8271 (832 bytes)
+  uint8_t castling_us_ooo;          // Byte 8272
+  uint8_t castling_us_oo;           // Byte 8273
+  uint8_t castling_them_ooo;        // Byte 8274
+  uint8_t castling_them_oo;         // Byte 8275
+  uint8_t side_to_move_or_enpassant;// Byte 8276
+  uint8_t rule50_count;             // Byte 8277
+  // Bitfield (see V6 comments for details)
+  uint8_t invariance_info;          // Byte 8278
+  // Was result in V3/V4, dummy in V5/V6. Retained.
+  uint8_t dummy;                    // Byte 8279
+  float root_q;                     // Bytes 8280-8283
+  float best_q;                     // Bytes 8284-8287
+  float root_d;                     // Bytes 8288-8291
+  float best_d;                     // Bytes 8292-8295
+  float root_m;                     // Bytes 8296-8299 (In plies)
+  float best_m;                     // Bytes 8300-8303 (In plies)
+  float plies_left;                 // Bytes 8304-8307 (Training target for MLH)
+  float result_q;                   // Bytes 8308-8311
+  float result_d;                   // Bytes 8312-8315
+  float played_q;                   // Bytes 8316-8319
+  float played_d;                   // Bytes 8320-8323
+  float played_m;                   // Bytes 8324-8327
+  // The following may be NaN if not found in cache.
+  float orig_q;                     // Bytes 8328-8331 (For value repair)
+  float orig_d;                     // Bytes 8332-8335
+  float orig_m;                     // Bytes 8336-8339
+  uint32_t visits;                  // Bytes 8340-8343
+  // Indices in the probabilities array.
+  uint16_t played_idx;              // Bytes 8344-8345
+  uint16_t best_idx;                // Bytes 8346-8347
+  // Kullback-Leibler divergence
+  float policy_kld;                 // Bytes 8348-8351
+  // V7 specific fields start here.
+  // `st_q` effectively replaces V6's `reserved` (uint32_t) field, now a float.
+  float st_q;                       // Bytes 8352-8355 (Short-term Q EMA)
+  float st_d;                       // Bytes 8356-8359 (Short-term D EMA)
+  uint16_t opp_played_idx;          // Bytes 8360-8361 (Opponent's played move index in next state)
+  uint16_t next_played_idx;         // Bytes 8362-8363 (Our played move index in state after opponent's move)
+  float extra[8];                   // Bytes 8364-8395 (Reserved for future use, 32 bytes)
 } PACKED_STRUCT;
-static_assert(sizeof(V6TrainingData) == 8356, "Wrong struct size");
+static_assert(sizeof(V7TrainingData) == 8396, "Wrong struct size for V7TrainingData");
 
 #pragma pack(pop)
 
-class V6TrainingDataArray {
+class V7TrainingDataArray {
  public:
-  V6TrainingDataArray(FillEmptyHistory white_fill_empty_history,
+  V7TrainingDataArray(FillEmptyHistory white_fill_empty_history,
                       FillEmptyHistory black_fill_empty_history,
-                      pblczero::NetworkFormat::InputFormat input_format)
-      : fill_empty_history_{white_fill_empty_history, black_fill_empty_history},
-        input_format_(input_format) {}
+                      pblczero::NetworkFormat::InputFormat input_format);
 
   // Add a chunk.
   void Add(const classic::Node* node, const PositionHistory& history,
@@ -108,7 +108,7 @@ class V6TrainingDataArray {
              bool adjudicated) const;
 
  private:
-  std::vector<V6TrainingData> training_data_;
+  std::vector<V7TrainingData> training_data_;
   FillEmptyHistory fill_empty_history_[2];
   pblczero::NetworkFormat::InputFormat input_format_;
 };
