@@ -29,10 +29,12 @@
 
 #include <fstream>
 #include <zlib.h>
+#include "trainingdata/trainingdata.h" // For V7TrainingData definition
 
 namespace lczero {
 
-struct V7TrainingData;
+// V7TrainingData struct is now included from trainingdata.h
+// No need for forward declaration here if trainingdata.h is included.
 
 class TrainingDataWriter {
  public:
