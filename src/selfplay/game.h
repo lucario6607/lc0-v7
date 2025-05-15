@@ -32,15 +32,14 @@
 #include <string>
 #include <vector>
 
-#include "search/classic/search.h"      // Provides Node, NodeTree, Search definitions
-#include "trainingdata/trainingdata.h"   // For V7TrainingDataArray
-#include "utils/history.h"               // For PositionHistory (ensure this is src/utils/history.h)
-#include "chess/pgnbuilder.h"            // For PGNBuilder
-#include "utils/selfplayoptions.h"       // For SelfplayOptions
-#include "utils/trainingdataoptions.h"   // For TrainingDataOptions
-#include "neural/encoder.h"              // For FillEmptyHistory
-#include "neural/backend.h"              // For neural::Network, neural::EvalResult (used in Game methods)
-#include "chess/position.h"              // For Move, GameResult, DrawReason, GameResultReason (used in Game methods)
+#include "chess/pgn.h"
+#include "chess/position.h"
+#include "chess/uciloop.h"
+#include "neural/backend.h"
+#include "search/classic/search.h"
+#include "search/classic/stoppers/stoppers.h"
+#include "trainingdata/trainingdata.h"
+#include "utils/optionsparser.h"
 
 
 namespace lczero {
