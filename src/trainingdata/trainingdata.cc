@@ -26,6 +26,7 @@
 */
 
 #include "trainingdata/trainingdata.h"
+#include "trainingdata/writer.h" // For TrainingDataWriter definition
 #include <algorithm> // For std::fill, std::find
 #include <cmath>     // For std::log, std::pow, std::max
 #include <limits>    // For std::numeric_limits
@@ -79,6 +80,13 @@ std::tuple<float, float> DriftCorrect(float q, float d) {
   return {q, d};
 }
 }  // namespace
+
+V7TrainingDataArray::V7TrainingDataArray(FillEmptyHistory white_fill_empty_history,
+                      FillEmptyHistory black_fill_empty_history,
+                      pblczero::NetworkFormat::InputFormat input_format)
+      : fill_empty_history_{white_fill_empty_history, black_fill_empty_history},
+        input_format_(input_format) {}
+
 
 void V7TrainingDataArray::Write(TrainingDataWriter* writer, GameResult result,
                                 bool adjudicated) const {
@@ -163,7 +171,7 @@ void V7TrainingDataArray::Add(const classic::Node* node,
           legal_moves.begin();
       // Undo any softmax temperature in the cached data.
       float P = std::pow(nneval->p[move_idx], policy_softmax_temp);
-      if (fracv > 0) {
+      if (fracv > 0) { // fracv can be 0 if N=0 and num_edges=1
         kld_sum += fracv * std::log(fracv / P);
       }
       total += P;
