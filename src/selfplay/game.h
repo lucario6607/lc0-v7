@@ -34,7 +34,7 @@
 
 #include "search/classic/search.h"    // Provides Node, NodeTree, Search definitions
 #include "trainingdata/trainingdata.h" // For V7TrainingDataArray
-#include "chess/history.h"             // Changed from "utils/history.h"
+#include "utils/positionhistory.h"     // Changed from "utils/history.h" or "chess/history.h"
 #include "utils/options.h"
 #include "utils/pgnbuilder.h"
 #include "utils/ratelimiter.h"
