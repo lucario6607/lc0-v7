@@ -27,11 +27,6 @@
 
 #pragma once
 
-#include <memory>
-#include <optional>
-#include <string>
-#include <vector>
-
 #include "chess/pgn.h"
 #include "chess/position.h"
 #include "chess/uciloop.h"
@@ -41,62 +36,94 @@
 #include "trainingdata/trainingdata.h"
 #include "utils/optionsparser.h"
 
-
 namespace lczero {
-namespace classic {
-class Node; // Forward declaration
-struct Eval;  // Forward declaration
-}  // namespace classic
 
+struct SelfPlayLimits {
+  std::int64_t visits = -1;
+  std::int64_t playouts = -1;
+  std::int64_t movetime = -1;
 
-// Contains the state of a game (both training and match game).
-class Game {
+  std::unique_ptr<classic::ChainedSearchStopper> MakeSearchStopper() const;
+};
+
+struct PlayerOptions {
+  using OpeningCallback = std::function<void(const Opening&)>;
+  // Backend to use by the player.
+  Backend* backend;
+  // Callback when player moves.
+  CallbackUciResponder::BestMoveCallback best_move_callback;
+  // Callback when player outputs info.
+  CallbackUciResponder::ThinkingCallback info_callback;
+  // Callback when player discards a selected move due to low visits.
+  OpeningCallback discarded_callback;
+  // User options dictionary.
+  const OptionsDict* uci_options;
+  // Limits to use for every move.
+  SelfPlayLimits search_limits;
+};
+
+// Plays a single game vs itself.
+class SelfPlayGame {
  public:
-  Game(int id, PGNBuilder* pgn_builder, neural::Network* backend,
-       const TrainingDataOptions& training_data_options,
-       const FillEmptyHistory& white_fill_empty_history,
-       const FillEmptyHistory& black_fill_empty_history);
-  ~Game();
+  // Player options may point to the same network/cache/etc.
+  // If shared_tree is true, search tree is reused between players.
+  // (useful for training games). Otherwise the tree is separate for black
+  // and white (useful i.e. when they use different networks).
+  SelfPlayGame(PlayerOptions white, PlayerOptions black, bool shared_tree,
+               const Opening& opening);
 
-  const PositionHistory& GetHistory() const { return history_; }
-  PositionHistory& GetHistory() { return history_; }
+  // Populate command line options that it uses.
+  static void PopulateUciParams(OptionsParser* options);
 
-  void Reset(const std::string& fen);
+  // Starts the game and blocks until the game is finished.
+  void Play(int white_threads, int black_threads, bool training,
+            SyzygyTablebase* syzygy_tb, bool enable_resign = true);
+  // Aborts the game currently played, doesn't matter if it's synchronous or
+  // not.
+  void Abort();
 
-  bool AddMove(Move move, classic::Eval best_eval, classic::Eval played_eval,
-               bool best_is_proven, const classic::Node* node,
-               float policy_softmax_temp, std::span<Move> legal_moves,
-               const std::optional<neural::EvalResult>& nneval, std::string comment);
+  // Number of ply used from the given opening.
+  int GetStartPly() const { return start_ply_; }
 
-  GameResult GetResult(bool adjudicated) const;
-  std::string WriteTrainingData(GameResult result, bool adjudicated);
-  std::string GetPGN() const;
+  // Writes training data to a file.
+  void WriteTrainingData(TrainingDataWriter* writer) const;
 
-  GameResultReason CheckStop(const SelfplayOptions& options, int max_plies);
-  DrawReason CheckDraw(const SelfplayOptions& options);
-  bool CheckResign(const SelfplayOptions& options,
-                   const classic::Node* root_node, bool is_our_turn);
-
-  bool IsGameOver() const { return is_game_over_; }
-  void SetGameOver() { is_game_over_ = true; }
-  int GetId() const { return id_; }
-  size_t GetPgnPly() const { return history_.GetPgnPly(); }
-  size_t GetTotalPly() const { return history_.GetLength(); }
-  bool FromBook() const { return from_book_; }
-  void SetFromBook() { from_book_ = true; }
+  GameResult GetGameResult() const { return game_result_; }
+  std::vector<Move> GetMoves() const;
+  // Gets the eval which required the biggest swing up to get the final outcome.
+  // Eval is the expected outcome in the range 0<->1.
+  float GetWorstEvalForWinnerOrDraw() const;
+  int move_count_ = 0;
+  uint64_t nodes_total_ = 0;
 
  private:
-  void Reset(const PositionHistory& history);
-  void DoReset();
+  // options_[0] is for white player, [1] for black.
+  PlayerOptions options_[2];
+  // Node tree for player1 and player2. If the tree is shared between players,
+  // tree_[0] == tree_[1].
+  std::shared_ptr<classic::NodeTree> tree_[2];
+  std::string orig_fen_;
+  int start_ply_;
 
-  const int id_;
-  bool is_game_over_ = false;
-  bool from_book_ = false;
-  PositionHistory history_;
-  PGNBuilder* const pgn_builder_;
-  neural::Network* const backend_ = nullptr;
-  TrainingDataOptions training_data_options_;
-  V7TrainingDataArray training_data_;
+  // Search that is currently in progress. Stored in members so that Abort()
+  // can stop it.
+  std::unique_ptr<classic::Search> search_;
+  bool abort_ = false;
+  GameResult game_result_ = GameResult::UNDECIDED;
+  bool adjudicated_ = false;
+  // Track minimum eval for each player so that GetWorstEvalForWinnerOrDraw()
+  // can be calculated after end of game.
+  float min_eval_[2] = {1.0f, 1.0f};
+  // Track the maximum eval for white win, draw, black win for comparison to
+  // actual outcome.
+  float max_eval_[3] = {0.0f, 0.0f, 0.0f};
+  const bool chess960_;
+  std::mutex mutex_;
+
+  // Training data to send.
+  V6TrainingDataArray training_data_;
+
+  std::unique_ptr<SyzygyTablebase> syzygy_tb_;
 };
 
 }  // namespace lczero
