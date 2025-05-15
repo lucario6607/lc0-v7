@@ -27,7 +27,7 @@
 
 #pragma once
 
-#include "trainingdata/trainingdata.h"
+#include "trainingdata/trainingdata.h" // For V7TrainingData definition
 
 namespace lczero {
 
@@ -56,7 +56,6 @@ class TrainingDataReader {
  private:
   std::string filename_;
   gzFile fin_;
-  // bool format_v6 = false; // No longer needed, version handled per chunk.
 };
 
 }  // namespace lczero
