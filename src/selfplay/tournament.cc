@@ -37,7 +37,6 @@
 #include "search/classic/stoppers/factory.h"
 #include "selfplay/game.h"
 #include "selfplay/multigame.h"
-#include "selfplay/training_data_writer.h"  // Add this include for TrainingDataWriter
 #include "utils/optionsparser.h"
 #include "utils/random.h"
 
