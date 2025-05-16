@@ -34,6 +34,7 @@
 #include "neural/memcache.h"
 #include "neural/shared_params.h"
 #include "search/classic/search.h"
+#include "selfplay/trainingdata.h"
 #include "search/classic/stoppers/factory.h"
 #include "selfplay/game.h"
 #include "selfplay/multigame.h"
